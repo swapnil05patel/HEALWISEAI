@@ -1,5 +1,4 @@
-
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity } from "lucide-react";
 import { 
@@ -13,66 +12,128 @@ import {
   Legend 
 } from "recharts";
 
-// Sample health data for the past week
-const healthData = [
-  {
-    date: "Mon",
-    heartRate: 72,
-    bloodPressureSystolic: 123,
-    bloodPressureDiastolic: 83,
-    bloodSugar: 103,
-  },
-  {
-    date: "Tue",
-    heartRate: 75,
-    bloodPressureSystolic: 125,
-    bloodPressureDiastolic: 82,
-    bloodSugar: 106,
-  },
-  {
-    date: "Wed",
-    heartRate: 71,
-    bloodPressureSystolic: 121,
-    bloodPressureDiastolic: 80,
-    bloodSugar: 100,
-  },
-  {
-    date: "Thu",
-    heartRate: 73,
-    bloodPressureSystolic: 124,
-    bloodPressureDiastolic: 81,
-    bloodSugar: 104,
-  },
-  {
-    date: "Fri",
-    heartRate: 69,
-    bloodPressureSystolic: 120,
-    bloodPressureDiastolic: 79,
-    bloodSugar: 101,
-  },
-  {
-    date: "Sat",
-    heartRate: 72,
-    bloodPressureSystolic: 119,
-    bloodPressureDiastolic: 80,
-    bloodSugar: 99,
-  },
-  {
-    date: "Sun",
-    heartRate: 70,
-    bloodPressureSystolic: 122,
-    bloodPressureDiastolic: 82,
-    bloodSugar: 98,
-  },
-];
+interface HealthMetric {
+  date: string;
+  heartRate: number;
+  bloodPressureSystolic: number;
+  bloodPressureDiastolic: number;
+  bloodSugar: number;
+}
 
 const HealthTrendChart = () => {
+  // Prediction function to generate future metrics
+  const predictNextDaysMetrics = (currentMetrics: any) => {
+    // Simple prediction logic with some randomness
+    const predict = (currentValue: number, variability: number) => {
+      // Add some randomness to simulate prediction
+      const variation = (Math.random() - 0.5) * variability;
+      return Math.max(0, currentValue + variation);
+    };
+
+    return {
+      heartRate: predict(currentMetrics.heartRate, 5),
+      bloodPressureSystolic: predict(currentMetrics.bloodPressureSystolic, 3),
+      bloodPressureDiastolic: predict(currentMetrics.bloodPressureDiastolic, 3),
+      bloodSugar: predict(currentMetrics.bloodSugar, 2)
+    };
+  };
+
+  // Get current day of the week
+  const getCurrentDay = () => {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return days[new Date().getDay()];
+  };
+
+  // Generate initial health data with current day first and predictions
+  const generateInitialHealthData = () => {
+    const currentDay = getCurrentDay();
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    
+    // Rotate the array so current day is first
+    const rotatedDays = days.slice(days.indexOf(currentDay)).concat(days.slice(0, days.indexOf(currentDay)));
+    
+    // Start with zeros
+    let baseMetrics = {
+      heartRate: 0,
+      bloodPressureSystolic: 0,
+      bloodPressureDiastolic: 0,
+      bloodSugar: 0
+    };
+
+    return rotatedDays.map((day, index) => {
+      if (index === 0) {
+        // First day uses actual stored metrics
+        return {
+          date: day,
+          heartRate: 0,
+          bloodPressureSystolic: 0,
+          bloodPressureDiastolic: 0,
+          bloodSugar: 0
+        };
+      } else {
+        // Subsequent days use prediction
+        const predictedMetrics = predictNextDaysMetrics(baseMetrics);
+        baseMetrics = predictedMetrics;
+        return {
+          date: day,
+          ...predictedMetrics
+        };
+      }
+    });
+  };
+
+  const [healthData, setHealthData] = useState<HealthMetric[]>(generateInitialHealthData());
+
+  useEffect(() => {
+    const updateHealthData = () => {
+      const storedMetrics = localStorage.getItem('healthMetrics');
+      const currentDay = getCurrentDay();
+      
+      if (storedMetrics) {
+        try {
+          const parsedMetrics = JSON.parse(storedMetrics);
+          
+          // Update the first day (current day) with stored metrics
+          const updatedHealthData = generateInitialHealthData();
+          updatedHealthData[0] = {
+            date: currentDay,
+            heartRate: parseFloat(parsedMetrics.heartRate) || 0,
+            bloodPressureSystolic: parseFloat(parsedMetrics.bloodPressureSystolic) || 0,
+            bloodPressureDiastolic: parseFloat(parsedMetrics.bloodPressureDiastolic) || 0,
+            bloodSugar: parseFloat(parsedMetrics.bloodSugar) || 0
+          };
+
+          setHealthData(updatedHealthData);
+        } catch (error) {
+          console.error("Error parsing health metrics:", error);
+        }
+      }
+    };
+
+    // Initial update
+    updateHealthData();
+
+    // Add custom event listener
+    const handleStorageChange = (e: CustomEvent) => {
+      updateHealthData();
+    };
+
+    // @ts-ignore
+    window.addEventListener('healthMetricsUpdate', handleStorageChange);
+
+    // Cleanup listener
+    return () => {
+      // @ts-ignore
+      window.removeEventListener('healthMetricsUpdate', handleStorageChange);
+    };
+  }, []);
+
   return (
     <Card>
       <CardHeader className="bg-medical-lightblue bg-opacity-50 border-b">
         <CardTitle className="flex items-center text-medical-darkblue">
           <Activity className="mr-2 h-5 w-5" />
-          Health Trends
+          Health Trends (with Predictions)
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-6">
@@ -158,7 +219,7 @@ const HealthTrendChart = () => {
           </ResponsiveContainer>
         </div>
         <div className="mt-4 text-center text-sm text-gray-500">
-          Weekly health data: Track your vital metrics over time
+          Predicted Health Metrics for the Week
         </div>
       </CardContent>
     </Card>

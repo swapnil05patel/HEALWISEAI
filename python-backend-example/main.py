@@ -99,6 +99,10 @@ from torchvision import transforms
 import requests
 import io
 import numpy as np
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
 from typing import List, Dict
 import json
 import os
@@ -602,4 +606,88 @@ async def get_nearby_hospitals(lat: float, lon: float):
     response = requests.get(url)
     return response.json().get('results', [])
 
+# Health Metrics Prediction Model
+class HealthMetrics(BaseModel):
+    heartRate: str
+    bloodPressureSystolic: str
+    bloodPressureDiastolic: str
+    bloodSugar: str
+    weight: str
+    height: str
+
+class HealthPrediction(BaseModel):
+    summary: str
+    details: str
+
+def train_health_prediction_model():
+    # Simulated health dataset (you should replace this with a real, comprehensive dataset)
+    data = {
+        'heart_rate': [70, 75, 80, 65, 72],
+        'systolic_bp': [120, 125, 130, 115, 122],
+        'diastolic_bp': [80, 82, 85, 75, 78],
+        'blood_sugar': [95, 100, 105, 90, 98],
+        'weight': [70, 75, 80, 65, 72],
+        'height': [170, 175, 180, 165, 172],
+        'health_risk': [0.2, 0.3, 0.4, 0.1, 0.25]  # 0 is low risk, 1 is high risk
+    }
+    
+    df = pd.DataFrame(data)
+    
+    X = df.drop('health_risk', axis=1)
+    y = df['health_risk']
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X_train_scaled, y_train)
+    
+    return model, scaler
+
+# Train the model when the server starts
+health_model, health_scaler = train_health_prediction_model()
+
+@app.post("/api/predict-health", response_model=HealthPrediction)
+async def predict_health(metrics: HealthMetrics):
+    try:
+        # Convert input to numeric values
+        input_data = {
+            'heart_rate': float(metrics.heartRate),
+            'systolic_bp': float(metrics.bloodPressureSystolic),
+            'diastolic_bp': float(metrics.bloodPressureDiastolic),
+            'blood_sugar': float(metrics.bloodSugar),
+            'weight': float(metrics.weight),
+            'height': float(metrics.height)
+        }
+        
+        # Prepare input data
+        input_df = pd.DataFrame([input_data])
+        input_scaled = health_scaler.transform(input_df)
+        
+        # Predict health risk
+        health_risk = health_model.predict(input_scaled)[0]
+        
+        # Interpret health risk
+        if health_risk < 0.2:
+            summary = "Low Health Risk"
+            details = "Your current health metrics indicate a low risk of health issues. Continue maintaining your healthy lifestyle."
+        elif health_risk < 0.4:
+            summary = "Moderate Health Risk"
+            details = "Your health metrics suggest some potential areas of concern. Consider consulting a healthcare professional for personalized advice."
+        else:
+            summary = "High Health Risk"
+            details = "Your health metrics indicate potential risks. It is strongly recommended to consult a healthcare professional for a comprehensive health assessment."
+        
+        return HealthPrediction(
+            summary=summary,
+            details=details
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 # Run using: uvicorn main:app --reload
